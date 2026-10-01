@@ -1,0 +1,26 @@
+[
+  {
+    "text": "夜色落在窗台",
+    "start_ms": 12400,
+    "end_ms": 16850,
+    "confidence": 0.96
+  },
+  {
+    "text": "我还没有离开",
+    "start_ms": 17600,
+    "end_ms": 21400,
+    "confidence": 0.93
+  },
+  {
+    "text": "你说故事还很长",
+    "start_ms": 24560,
+    "end_ms": 28500,
+    "confidence": 0.91
+  },
+  {
+    "text": "我们都别急着悲伤",
+    "start_ms": 30420,
+    "end_ms": 34600,
+    "confidence": 0.95
+  }
+]

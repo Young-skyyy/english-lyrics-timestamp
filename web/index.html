@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LyricFlow · 歌词同步检查</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand-mark">LF</div>
+      <div>
+        <p class="eyebrow">LYRIC QUALITY WORKSPACE</p>
+        <h1>让歌词跟上每一个字。</h1>
+      </div>
+      <div class="status-pill"><span></span> 本地工作区</div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <p class="eyebrow">发行前检查</p>
+        <h2>上传音频，导入歌词，<br /><em>先把问题看清楚。</em></h2>
+        <p class="hero-copy">浏览器端先完成文件整理与试听。接入 Python 识别服务后，系统会自动生成 ASR 时间轴并定位异常。</p>
+      </div>
+      <div class="hero-note">
+        <span class="note-label">MVP / 01</span>
+        <strong>音频 + 歌词</strong>
+        <small>拖入即开始</small>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <div class="panel input-panel">
+        <div class="panel-heading">
+          <div><span class="step">01</span><h3>添加素材</h3></div>
+          <span class="hint">支持 WAV · MP3 · FLAC · M4A</span>
+        </div>
+
+        <label class="dropzone" id="audioDropzone">
+          <input id="audioInput" type="file" accept="audio/*,.wav,.mp3,.flac,.m4a" />
+          <div class="drop-icon">↥</div>
+          <strong id="audioTitle">拖入音频文件</strong>
+          <span id="audioMeta">或点击选择最终发行母带</span>
+        </label>
+        <audio id="audioPlayer" controls hidden></audio>
+
+        <div class="divider"><span>歌词来源</span></div>
+        <div class="source-tabs">
+          <button class="tab active" data-source="text">直接输入</button>
+          <button class="tab" data-source="file">读取歌词文件</button>
+        </div>
+        <div id="textSource" class="source-content">
+          <textarea id="lyricsInput" placeholder="在这里粘贴官方歌词，每行一句...&#10;&#10;建议使用最终发行版本的歌词，不要用 x2 省略重复段落。"></textarea>
+          <div class="textarea-footer"><span id="lineCount">0 行</span><span>文本不会被自动改写</span></div>
+        </div>
+        <div id="fileSource" class="source-content hidden">
+          <label class="file-button"><input id="lyricsFileInput" type="file" accept=".txt,.lrc,.srt,.vtt,text/plain" />选择 .txt / .lrc / .srt / .vtt 文件</label>
+          <p id="lyricsFileMeta" class="file-meta">导入后会自动识别纯文本或时间标签。</p>
+        </div>
+
+        <div class="mode-control">
+          <label for="modeSelect">识别模式</label>
+          <select id="modeSelect">
+            <option value="fast">Fast · 快速</option>
+            <option value="rap" selected>Rap · 英文高精度</option>
+            <option value="quality">Quality · 人声分离</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button class="secondary" id="clearButton">清空</button>
+          <button class="primary" id="analyzeButton">生成本地预览 <span>→</span></button>
+        </div>
+      </div>
+
+      <div class="panel result-panel">
+        <div class="panel-heading">
+          <div><span class="step">02</span><h3>时间轴预览</h3></div>
+          <span class="result-status" id="resultStatus">等待素材</span>
+        </div>
+        <div class="empty-state" id="emptyState">
+          <div class="waveform"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <strong>你的同步工作区</strong>
+          <p>添加音频和歌词后，这里会显示可播放的歌词行。<br />连接 faster-whisper 后即可生成自动对齐结果。</p>
+        </div>
+        <div id="resultState" class="hidden">
+          <div class="metrics">
+            <div><span>歌词行数</span><strong id="metricLines">—</strong></div>
+            <div><span>音频时长</span><strong id="metricDuration">—</strong></div>
+            <div><span>当前偏移</span><strong id="metricOffset">0.0s</strong></div>
+          </div>
+          <div class="offset-control">
+            <div><span>整体偏移</span><strong id="offsetValue">0.0s</strong></div>
+            <input id="offsetSlider" type="range" min="-2" max="2" step="0.1" value="0" />
+            <div class="range-labels"><span>-2.0s 提前</span><span>延后 +2.0s</span></div>
+          </div>
+          <div class="lyrics-preview" id="lyricsPreview"></div>
+          <div class="export-row"><button class="secondary" id="downloadButton">下载 LRC</button><span>当前为本地预览，真实 ASR 对齐将在后端接入。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <footer><span>LyricFlow / Alignment workspace</span><span>内容由你确认 · 时间轴由系统辅助</span></footer>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

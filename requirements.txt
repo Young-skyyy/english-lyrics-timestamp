@@ -1,0 +1,6 @@
+faster-whisper>=1.1.0
+whisperx>=3.3.0
+demucs>=4.0.1
+fastapi>=0.115.0
+python-multipart>=0.0.9
+uvicorn[standard]>=0.30.0

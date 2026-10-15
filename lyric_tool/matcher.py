@@ -45,22 +45,11 @@ def _word_weight(word: str) -> float:
 
 
 def _segment_words(segment: AsrSegment) -> list[AsrWord]:
-    if segment.words:
-        return [word for word in segment.words if word.text.strip()]
-    tokens = _WORD_RE.findall(segment.text)
-    if not tokens:
-        return []
-    duration = max(1, segment.end_ms - segment.start_ms)
-    weights = [max(1, len(token)) for token in tokens]
-    total_weight = sum(weights)
-    words: list[AsrWord] = []
-    elapsed_weight = 0
-    for token, weight in zip(tokens, weights):
-        start_ms = segment.start_ms + round(duration * elapsed_weight / total_weight)
-        elapsed_weight += weight
-        end_ms = segment.start_ms + round(duration * elapsed_weight / total_weight)
-        words.append(AsrWord(token, start_ms, max(start_ms + 1, end_ms), segment.confidence))
-    return words
+    # Only measured word times belong in the acoustic word matching path.
+    return [
+        word for word in segment.words
+        if word.text.strip() and 0 <= word.start_ms < word.end_ms
+    ]
 
 
 def asr_words(segments: list[AsrSegment]) -> list[tuple[int, AsrWord]]:
@@ -107,55 +96,16 @@ def align_lyric_lines_to_word_windows(
     lyrics: list[LyricLine],
     segments: list[AsrSegment],
 ) -> dict[int, tuple[list[int], float]]:
-    """按时间顺序寻找连续词窗口，允许从 ASR segment 中间开始。"""
-    observed = asr_words(segments)
-    if not lyrics or not observed:
-        return {}
-
-    result: dict[int, tuple[list[int], float]] = {}
-    cursor = 0
-    for lyric in lyrics:
-        expected = _WORD_RE.findall(lyric.text)
-        if not expected or cursor >= len(observed):
-            continue
-        expected_normalized = [normalize_text(word) for word in expected]
-        minimum = max(1, len(expected) - 2)
-        start_limit = min(len(observed), cursor + max(4, len(expected) * 2))
-        best: tuple[float, int, int] | None = None
-        for start in range(cursor, start_limit):
-            end_limit = min(len(observed), start + len(expected) + 3)
-            for end in range(start + minimum, end_limit + 1):
-                actual = [
-                    normalize_text(observed[index][1].text)
-                    for index in range(start, end)
-                ]
-                score = _window_score(expected_normalized, actual)
-                candidate = (score, start, end)
-                if best is None or candidate[0] > best[0] or (
-                    candidate[0] == best[0] and candidate[1] < best[1]
-                ):
-                    best = candidate
-        if best is None or best[0] < 0.45:
-            logger.debug(
-                "连续词窗口未匹配 line=%d text=%r cursor=%d best_score=%.4f",
-                lyric.index,
-                lyric.text,
-                cursor,
-                best[0] if best else 0.0,
-            )
-            continue
-        score, start, end = best
-        result[lyric.index] = (list(range(start, end)), round(score, 4))
-        cursor = end
-        logger.debug(
-            "连续词窗口匹配 line=%d text=%r observed=%d-%d score=%.4f",
-            lyric.index,
-            lyric.text,
-            start,
-            end - 1,
-            score,
-        )
-    return result
+    """Globally match lyric words, allowing ASR insertions and missing words."""
+    matches, scores = align_word_sequences(lyrics, segments)
+    grouped: dict[int, list[int]] = {}
+    for match in matches:
+        grouped.setdefault(match.lyric_index, []).append(match.asr_index)
+    return {
+        index: (indexes, scores[index])
+        for index, indexes in grouped.items()
+        if scores[index] >= 0.55
+    }
 
 
 def align_word_sequences(
@@ -183,7 +133,7 @@ def align_word_sequences(
         lyric_weight = _word_weight(lyric_word)
         for col in range(1, cols + 1):
             asr_word = observed[col - 1][1].text.casefold().replace("’", "'")
-            ratio = SequenceMatcher(None, lyric_word, normalize_text(asr_word)).ratio()
+            ratio = SequenceMatcher(None, normalize_text(lyric_word), normalize_text(asr_word)).ratio()
             match_score = ratio * lyric_weight if ratio >= 0.55 else -0.80 * lyric_weight
             candidates = (
                 (scores[row - 1][col - 1] + match_score, "eq"),
@@ -199,7 +149,7 @@ def align_word_sequences(
         if move == "eq":
             lyric_word = expected[row - 1][1]
             asr_word = observed[col - 1][1].text.casefold().replace("’", "'")
-            ratio = SequenceMatcher(None, lyric_word, normalize_text(asr_word)).ratio()
+            ratio = SequenceMatcher(None, normalize_text(lyric_word), normalize_text(asr_word)).ratio()
             if ratio >= 0.55:
                 matches.append(WordMatch(expected[row - 1][0], col - 1, ratio))
             row -= 1
@@ -257,6 +207,7 @@ def align_lyric_lines_to_segment_windows(
     segments: list[AsrSegment],
     blocked_segments: set[int] | None = None,
     excluded_lyrics: set[int] | None = None,
+    word_anchors: dict[int, tuple[int, int]] | None = None,
 ) -> dict[int, tuple[int, int, float]]:
     """按歌词顺序匹配连续的多个 ASR segment，并返回独占的 segment 区间。"""
     if not lyrics or not segments:
@@ -264,10 +215,13 @@ def align_lyric_lines_to_segment_windows(
 
     blocked = blocked_segments or set()
     excluded = excluded_lyrics or set()
+    anchors = word_anchors or {}
     result: dict[int, tuple[int, int, float]] = {}
     cursor = 0
     for lyric in lyrics:
         if lyric.index in excluded or lyric.index in result:
+            if lyric.index in anchors:
+                cursor = max(cursor, anchors[lyric.index][1])
             continue
         expected = _WORD_RE.findall(lyric.text)
         if not expected:
@@ -277,11 +231,15 @@ def align_lyric_lines_to_segment_windows(
             12,
             max(2, len(expected) // 2 + 2),
         )
-        for start in range(cursor, len(segments)):
+        next_anchor = min(
+            (start for index, (start, _end) in anchors.items() if index > lyric.index),
+            default=len(segments),
+        )
+        for start in range(cursor, next_anchor):
             if start in blocked:
                 continue
             text_parts: list[str] = []
-            for end in range(start, min(len(segments), start + max_window_segments)):
+            for end in range(start, min(next_anchor, start + max_window_segments)):
                 if end in blocked:
                     break
                 text_parts.append(segments[end].text)

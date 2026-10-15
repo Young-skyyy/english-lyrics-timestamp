@@ -11,8 +11,11 @@ def format_lrc(result: AlignmentResult) -> str:
     for line in result.lines:
         if line.start_ms is None:
             continue
-        minutes, remainder = divmod(line.start_ms, 60_000)
-        rows.append(f"[{minutes:02d}:{remainder / 1_000:05.2f}]{line.text}")
+        # Round before splitting so 59.999 seconds becomes 01:00.00.
+        centiseconds = (max(0, line.start_ms) + 5) // 10
+        minutes, remainder = divmod(centiseconds, 6_000)
+        seconds, fraction = divmod(remainder, 100)
+        rows.append(f"[{minutes:02d}:{seconds:02d}.{fraction:02d}]{line.text}")
     return "\n".join(rows)
 
 

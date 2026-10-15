@@ -76,6 +76,9 @@ class LyricAligner:
                 timing_score,
                 sequence_score,
             )
+            timing_confidence = min(timing_confidence, text_match_score)
+            if not segment.words:
+                timing_confidence = min(timing_confidence, 0.5)
             # 单行歌词可能对应多次演唱，原始 LRC 的单个时间点不能作为逐次偏移锚点。
             sync_lines.append(
                 SyncLine(
@@ -110,7 +113,10 @@ class LyricAligner:
         asr_segments: list[AsrSegment],
         imported_lines: list[ImportedLyricLine] | None = None,
     ) -> tuple[list[SyncLine], int]:
-        if len(lyrics) == 1:
+        if len(lyrics) == 1 and sum(
+            SequenceMatcher(None, lyrics[0].normalized_text, normalize_text(segment.text)).ratio() >= 0.85
+            for segment in asr_segments
+        ) > 1:
             return self._align_repeated_single_line(lyrics[0], asr_segments, imported_lines)
 
         sync_lines: list[SyncLine] = []
@@ -141,6 +147,13 @@ class LyricAligner:
             asr_segments,
             used_segments,
             excluded_lyrics,
+            word_anchors={
+                index: (
+                    min(word_observed[i][0] for i in indexes),
+                    max(word_observed[i][0] for i in indexes) + 1,
+                )
+                for index, indexes in line_word_ranges.items()
+            },
         )
         last_segment_index = -1
         for lyric in lyrics:
@@ -331,7 +344,7 @@ class LyricAligner:
                 continue
 
             segment = asr_segments[segment_index]
-            if not matched_words or start_ms is None or end_ms is None:
+            if start_ms is None or end_ms is None:
                 start_ms, end_ms, match_method = self._segment_bounds(segment)
                 logger.debug(
                     "低分匹配边界 line=%d source=%s segment=%d segment_time=%d-%d",
@@ -349,7 +362,7 @@ class LyricAligner:
                 words=segment.words,
             )
             timing_score = calculate_timing_score(timing_segment, previous_end_ms)
-            sequence_score = 1.0 if segment_index >= search_from else 0.25
+            sequence_score = 1.0 if previous_end_ms is None or start_ms >= previous_end_ms else 0.25
             asr_confidence = segment.confidence if segment.confidence > 0 else text_match_score
             content_confidence = calculate_content_confidence(
                 text_match_score,
@@ -358,6 +371,10 @@ class LyricAligner:
                 sequence_score,
             )
             timing_confidence = calculate_initial_timing_confidence(timing_score, sequence_score)
+            # Missing words and coarse segment boundaries are not precise onsets.
+            timing_confidence = min(timing_confidence, text_match_score)
+            if not matched_words:
+                timing_confidence = min(timing_confidence, 0.5)
             logger.debug(
                 "低分匹配评分 line=%d text_score=%.4f asr_confidence=%.4f content=%.4f timing_score=%.4f sequence=%.4f timing=%.4f previous_end_ms=%s",
                 position,
@@ -416,6 +433,6 @@ class LyricAligner:
                 if line.start_ms is None or line.line_index >= len(imported_lines):
                     continue
                 delta_ms = line.start_ms - imported_lines[line.line_index].start_ms
-                line.timing_confidence = calculate_timing_confidence(delta_ms, global_offset_ms)
+                line.timing_confidence = min(line.timing_confidence, calculate_timing_confidence(delta_ms, global_offset_ms))
                 line.review_status = "auto_pass" if line.content_confidence >= 0.90 and line.timing_confidence >= 0.90 else "needs_review"
         return sync_lines, global_offset_ms

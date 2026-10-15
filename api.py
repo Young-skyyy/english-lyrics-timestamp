@@ -15,13 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from music_tool.lyric_tool import AlignmentPipeline, FasterWhisperTranscriber, WhisperXTranscriber
-from music_tool.lyric_tool.exporters import format_lrc
-from music_tool.lyric_tool.models import AsrSegment
-from music_tool.lyric_tool.parser import parse_lyrics, parse_lrc
-from music_tool.lyric_tool.separator import DemucsSeparator
-from music_tool.lyric_tool.timing import correct_segments_piecewise, shift_segments
-from music_tool.lyric_tool.isolated_transcriber import run_transcription
+from lyric_tool import AlignmentPipeline, FasterWhisperTranscriber, WhisperXTranscriber
+from lyric_tool.exporters import format_lrc
+from lyric_tool.models import AsrSegment
+from lyric_tool.parser import parse_lyrics, parse_lrc
+from lyric_tool.separator import DemucsSeparator
+from lyric_tool.isolated_transcriber import run_transcription
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
@@ -29,7 +28,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
 MAX_AUDIO_BYTES = 200 * 1024 * 1024
-RAP_EARLY_OFFSET_MS = max(0, int(os.getenv("LYRICFLOW_RAP_EARLY_OFFSET_MS", "250")))
 MODEL_LOAD_TIMEOUT_S = max(1, int(os.getenv("LYRICFLOW_MODEL_LOAD_TIMEOUT_S", "600")))
 TRANSCRIPTION_TIMEOUT_S = max(1, int(os.getenv("LYRICFLOW_TRANSCRIPTION_TIMEOUT_S", "900")))
 ALIGNMENT_TIMEOUT_S = max(1, int(os.getenv("LYRICFLOW_ALIGNMENT_TIMEOUT_S", "300")))
@@ -245,19 +243,7 @@ async def align(
                 time.perf_counter() - transcription_started_at,
                 len(asr_segments),
             )
-            if mode == "rap" and imported_lrc and asr_segments:
-                correction_started_at = time.perf_counter()
-                logger.info("Rap 开始分段时间校正 segments=%d", len(asr_segments))
-                asr_segments = correct_segments_piecewise(
-                    asr_segments,
-                    parse_lyrics(clean_lyrics),
-                    parse_lrc(imported_lrc),
-                )
-                logger.info(
-                    "Rap 分段时间校正完成 elapsed=%.2fs segments=%d",
-                    time.perf_counter() - correction_started_at,
-                    len(asr_segments),
-                )
+            # Imported LRC times are a comparison baseline, not acoustic truth.
             set_task_status(task_id, "aligning", "语音识别完成，正在进行歌词时间轴对齐")
             alignment_started_at = time.perf_counter()
             logger.info("[TASK] 开始歌词匹配 lyrics_lines=%d asr_segments=%d", len(parse_lyrics(clean_lyrics)), len(asr_segments))
@@ -293,6 +279,7 @@ async def align(
             raise HTTPException(status_code=500, detail=f"处理失败：{exc}") from exc
 
     payload = asdict(result)
+    payload["issue_count"] = result.issue_count
     payload["audio_filename"] = audio.filename
     payload["transcription_mode"] = mode
     payload["separation_model"] = _separator.model_name if mode == "quality" else None

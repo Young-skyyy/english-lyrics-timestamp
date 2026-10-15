@@ -77,13 +77,13 @@ class FasterWhisperTranscriber:
             confidence = self._segment_confidence(segment)
             words = [
                 AsrWord(
-                    text=word.text.strip(),
+                    text=word.word.strip(),
                     start_ms=round(word.start * 1_000),
                     end_ms=round(word.end * 1_000),
                     confidence=round(float(getattr(word, "probability", 0.0)), 4),
                 )
                 for word in (getattr(segment, "words", None) or [])
-                if getattr(word, "text", "").strip()
+                if getattr(word, "word", "").strip()
             ]
             result = AsrSegment(
                 text=text,
@@ -230,13 +230,13 @@ class FasterWhisperTranscriber:
                 continue
             words = [
                 AsrWord(
-                    text=word.text.strip(),
+                    text=word.word.strip(),
                     start_ms=round(word.start * 1_000),
                     end_ms=round(word.end * 1_000),
                     confidence=round(float(getattr(word, "probability", 0.0)), 4),
                 )
                 for word in (getattr(segment, "words", None) or [])
-                if getattr(word, "text", "").strip()
+                if getattr(word, "word", "").strip()
             ]
             results.append(
                 AsrSegment(

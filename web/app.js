@@ -9,10 +9,10 @@ const lyricsInput = $('#lyricsInput');
 const lyricsFileInput = $('#lyricsFileInput');
 
 function formatTime(seconds) {
-  const safe = Math.max(0, seconds);
-  const minutes = Math.floor(safe / 60);
-  const remainder = (safe % 60).toFixed(2).padStart(5, '0');
-  return `${String(minutes).padStart(2, '0')}:${remainder}`;
+  const centiseconds = Math.round(Math.max(0, seconds) * 100);
+  const minutes = Math.floor(centiseconds / 6000);
+  const remainder = centiseconds % 6000;
+  return `${String(minutes).padStart(2, '0')}:${String(Math.floor(remainder / 100)).padStart(2, '0')}.${String(remainder % 100).padStart(2, '0')}`;
 }
 
 function parseLyrics(text) {
@@ -28,8 +28,9 @@ function parseLyrics(text) {
 function renderPreview() {
   const offsetSeconds = Number($('#offsetSlider').value);
   state.offset = offsetSeconds;
-  $('#offsetValue').textContent = `${offsetSeconds >= 0 ? '+' : ''}${offsetSeconds.toFixed(1)}s`;
-  $('#metricOffset').textContent = `${offsetSeconds >= 0 ? '+' : ''}${offsetSeconds.toFixed(1)}s`;
+  $('#offsetValue').textContent = `${offsetSeconds >= 0 ? '+' : ''}${offsetSeconds.toFixed(2)}s`;
+  const detectedOffset = state.result ? state.result.global_offset_ms / 1000 : offsetSeconds;
+  $('#metricOffset').textContent = `${detectedOffset >= 0 ? '+' : ''}${detectedOffset.toFixed(2)}s`;
   const lines = state.result?.lines || state.parsedLines.map((line, index) => ({
     text: line.text,
     start_ms: line.importedSeconds == null ? null : Math.round(line.importedSeconds * 1000),
@@ -42,7 +43,7 @@ function renderPreview() {
     const seconds = Math.max(0, (line.start_ms == null ? fallback : line.start_ms / 1000) + offsetSeconds);
     const confidence = line.timing_confidence == null ? '' : ` · 内容 ${(line.content_confidence * 100).toFixed(0)}% · 时间 ${(line.timing_confidence * 100).toFixed(0)}%`;
     const issueClass = line.review_status === 'needs_review' ? ' active' : '';
-    return `<div class="lyric-line${issueClass}" data-time="${seconds.toFixed(2)}"><span class="lyric-time">${formatTime(seconds)}</span><span class="lyric-text">${escapeHtml(line.text)}<small class="line-confidence">${confidence}</small></span></div>`;
+    return `<div class="lyric-line${issueClass}" data-time="${seconds.toFixed(3)}"><span class="lyric-time">${formatTime(seconds)}</span><span class="lyric-text">${escapeHtml(line.text)}<small class="line-confidence">${confidence}</small></span></div>`;
   }).join('');
   $('#metricLines').textContent = lines.length;
 }
@@ -143,7 +144,8 @@ $('#analyzeButton').addEventListener('click', async () => {
     const actualMode = modeNames[state.result.transcription_mode] || state.result.transcription_mode;
     $('#resultStatus').textContent = `${actualMode} · ${state.result.status === 'approved' ? '自动通过' : `需要审核 · ${state.result.issue_count} 个问题`}`;
     $('#metricOffset').textContent = `${state.result.global_offset_ms >= 0 ? '+' : ''}${(state.result.global_offset_ms / 1000).toFixed(2)}s`;
-    $('#offsetSlider').value = (state.result.global_offset_ms / 1000).toFixed(1);
+    // Result timestamps already come from the audio. The LRC delta is diagnostic.
+    $('#offsetSlider').value = '0';
     renderPreview();
   } catch (error) {
     $('#resultStatus').textContent = '处理失败';

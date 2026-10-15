@@ -17,7 +17,6 @@ def _worker_main(mode: str, connection: Any) -> None:
     try:
         connection.send(("stage", "worker_started"))
         if mode == "rap":
-            os.environ.setdefault("HF_HUB_OFFLINE", "1")
             connection.send(("stage", "import_faster_whisper_transcriber"))
             from .transcriber import FasterWhisperTranscriber
 
@@ -36,6 +35,15 @@ def _worker_main(mode: str, connection: Any) -> None:
                 device="cpu",
                 compute_type="int8",
             )
+        acoustic_aligner = None
+        whisperx = None
+        if mode in {"rap", "quality"}:
+            connection.send(("stage", "load_acoustic_alignment"))
+            from .acoustic_aligner import WhisperXAcousticAligner
+            from .whisperx_transcriber import WhisperXTranscriber
+
+            whisperx = WhisperXTranscriber._load_whisperx()
+            acoustic_aligner = WhisperXAcousticAligner(whisperx, device="cpu")
         connection.send(("ready", None))
     except BaseException:
         connection.send(("error", traceback.format_exc()))
@@ -57,6 +65,21 @@ def _worker_main(mode: str, connection: Any) -> None:
                     )
                 else:
                     result = transcriber.transcribe(*args)
+                if acoustic_aligner is not None and result:
+                    # Use the same audio timeline (including the separated vocals
+                    # in quality mode) and refine real words with wav2vec2/CTC.
+                    audio = whisperx.load_audio(str(args[0]))
+                    language = "en" if mode == "rap" else (args[1] or "en")
+                    result = acoustic_aligner.align(
+                        audio,
+                        [
+                            {"text": segment.text,
+                             "start": segment.start_ms / 1000,
+                             "end": segment.end_ms / 1000}
+                            for segment in result
+                        ],
+                        language,
+                    )
                 connection.send(("result", result))
             except BaseException:
                 connection.send(("error", traceback.format_exc()))
@@ -130,11 +153,7 @@ class IsolatedTranscriber:
         model_load_timeout: float,
         inference_timeout: float,
     ) -> list[Any]:
-        args = (
-            (audio_path, lyrics)
-            if self.mode == "rap"
-            else (audio_path, language)
-        )
+        args = (audio_path, language)
         with self._lock:
             started_at = time.perf_counter()
             if self._process is None or not self._process.is_alive():

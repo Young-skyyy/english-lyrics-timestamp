@@ -52,8 +52,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 在仓库父目录执行：
 
 ```powershell
-cd ..
-uvicorn music_tool.api:app --reload
+uvicorn api:app --reload
 ```
 
 然后打开：
@@ -84,7 +83,7 @@ Web 页面可以上传音频和歌词，并选择不同的识别模式：
 ## Python 使用示例
 
 ```python
-from music_tool.lyric_tool import AlignmentPipeline
+from lyric_tool import AlignmentPipeline
 
 # 具体的 ASR 结果需要先转换为项目中的 AsrSegment 对象。
 # AlignmentPipeline 可用于把识别片段与歌词进行匹配和对齐。
@@ -105,3 +104,7 @@ Web API 已支持完整的上传、识别、歌词匹配和 LRC 输出流程。�
 ## License
 
 当前仓库未单独声明许可证。公开发布或再分发前，请根据需要补充许可证文件。
+
+## Timestamp precision update
+
+See [PRECISION.md](PRECISION.md) for fixes, model requirements and regression tests.

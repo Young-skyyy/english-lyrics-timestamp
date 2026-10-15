@@ -27,4 +27,4 @@ class AlignmentPipeline:
         timing_confidence = sum(line.timing_confidence for line in matched) / len(matched) if matched else 0.0
         status = "needs_review" if issues else "approved"
         logger.info("对齐完成 status=%s coverage=%.4f content_confidence=%.4f timing_confidence=%.4f issue_count=%d", status, coverage, content_confidence, timing_confidence, len(issues))
-        return AlignmentResult("demo-v0.1", "line", status, global_offset_ms, round(content_confidence, 4), round(timing_confidence, 4), round(coverage, 4), lines, issues)
+        return AlignmentResult("line-v0.2", "line", status, global_offset_ms, round(content_confidence, 4), round(timing_confidence, 4), round(coverage, 4), lines, issues)

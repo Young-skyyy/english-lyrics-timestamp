@@ -26,6 +26,7 @@ class WhisperXAcousticAligner:
         self.align_model_name_or_path = align_model_name_or_path
         self._align_model: Any | None = None
         self._align_metadata: Any | None = None
+        self._align_language: str | None = None
 
     def align(
         self,
@@ -68,7 +69,8 @@ class WhisperXAcousticAligner:
         result = self._to_segments(aligned.get("segments", []))
         aligned_words = sum(len(segment.words) for segment in result)
 
-        if result and aligned_words < max(1, len(cleaned) // 2):
+        expected_words = sum(len(segment["text"].split()) for segment in cleaned)
+        if cleaned and aligned_words < max(1, math.ceil(expected_words * 0.5)):
             retry_windows = self._expand_windows(cleaned, 500)
             logger.warning(
                 "WhisperX 首次对齐词数偏少 words=%d，扩大窗口重试 padding_ms=500",
@@ -121,6 +123,10 @@ class WhisperXAcousticAligner:
         )
 
     @staticmethod
+    def _window_summary(segment: dict[str, Any]) -> str:
+        return f"{segment['start']:.3f}-{segment['end']:.3f}: {segment['text'][:80]}"
+
+    @staticmethod
     def _clean_windows(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
         cleaned: list[dict[str, Any]] = []
         previous_end = 0.0
@@ -128,8 +134,14 @@ class WhisperXAcousticAligner:
             text = str(segment.get("text", "")).strip()
             if not text:
                 continue
-            start = max(previous_end, float(segment.get("start", previous_end)))
-            end = max(start + 0.05, float(segment.get("end", start + 0.05)))
+            raw_start = float(segment.get("start", previous_end))
+            raw_end = float(segment.get("end", raw_start + 0.05))
+            if not math.isfinite(raw_start) or not math.isfinite(raw_end):
+                continue
+            # Overlap is a search window, not evidence that the next line starts
+            # after the previous window ends. Preserve both candidate onsets.
+            start = max(0.0, raw_start)
+            end = max(start + 0.05, raw_end)
             cleaned.append({"text": text, "start": start, "end": end})
             previous_end = end
         return cleaned
@@ -146,7 +158,7 @@ class WhisperXAcousticAligner:
         ]
 
     def _get_align_model(self, language: str) -> tuple[Any, Any]:
-        if self._align_model is None:
+        if self._align_model is None or self._align_language != language:
             started_at = time.perf_counter()
             logger.info("WhisperX 正在加载 %s wav2vec2/CTC 模型", language)
             kwargs: dict[str, Any] = {"device": self.device}
@@ -156,6 +168,7 @@ class WhisperXAcousticAligner:
                 language_code=language,
                 **kwargs,
             )
+            self._align_language = language
             logger.info(
                 "WhisperX %s wav2vec2/CTC 模型加载完成 elapsed=%.2fs",
                 language,

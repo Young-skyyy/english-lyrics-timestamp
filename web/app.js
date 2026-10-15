@@ -38,12 +38,11 @@ function renderPreview() {
     content_confidence: null,
     review_status: 'local_preview',
   }));
-  $('#lyricsPreview').innerHTML = lines.map((line, index) => {
-    const fallback = state.duration ? (state.duration / Math.max(1, lines.length)) * index : index * 4;
-    const seconds = Math.max(0, (line.start_ms == null ? fallback : line.start_ms / 1000) + offsetSeconds);
+  $('#lyricsPreview').innerHTML = lines.map((line) => {
+    const seconds = line.start_ms == null ? null : Math.max(0, line.start_ms / 1000 + offsetSeconds);
     const confidence = line.timing_confidence == null ? '' : ` · 内容 ${(line.content_confidence * 100).toFixed(0)}% · 时间 ${(line.timing_confidence * 100).toFixed(0)}%`;
     const issueClass = line.review_status === 'needs_review' ? ' active' : '';
-    return `<div class="lyric-line${issueClass}" data-time="${seconds.toFixed(3)}"><span class="lyric-time">${formatTime(seconds)}</span><span class="lyric-text">${escapeHtml(line.text)}<small class="line-confidence">${confidence}</small></span></div>`;
+    return `<div class="lyric-line${issueClass}" ${seconds == null ? '' : `data-time="${seconds.toFixed(3)}"`}><span class="lyric-time">${seconds == null ? '--:--.--' : formatTime(seconds)}</span><span class="lyric-text">${escapeHtml(line.text)}<small class="line-confidence">${confidence}</small></span></div>`;
   }).join('');
   $('#metricLines').textContent = lines.length;
 }
@@ -158,7 +157,7 @@ $('#analyzeButton').addEventListener('click', async () => {
 
 $('#clearButton').addEventListener('click', () => window.location.reload());
 $('#downloadButton').addEventListener('click', () => {
-  const lines = [...document.querySelectorAll('.lyric-line')].map((element) => {
+  const lines = [...document.querySelectorAll('.lyric-line[data-time]')].map((element) => {
     const textElement = element.querySelector('.lyric-text');
     const text = textElement.firstChild?.textContent || '';
     return `[${element.querySelector('.lyric-time').textContent}]${text}`;
@@ -172,5 +171,8 @@ $('#downloadButton').addEventListener('click', () => {
 });
 
 audioPlayer.addEventListener('timeupdate', () => {
-  document.querySelectorAll('.lyric-line').forEach((line) => line.classList.toggle('active', Number(line.dataset.time) <= audioPlayer.currentTime && audioPlayer.currentTime < Number(line.nextElementSibling?.dataset.time || Infinity)));
+  const timedLines = [...document.querySelectorAll('.lyric-line[data-time]')];
+  timedLines.forEach((line, index) => line.classList.toggle('active',
+    Number(line.dataset.time) <= audioPlayer.currentTime &&
+    audioPlayer.currentTime < Number(timedLines[index + 1]?.dataset.time || Infinity)));
 });

@@ -282,41 +282,9 @@ class LyricAligner:
                         if position + 1 < len(imported_lines)
                         else provisional_start + 5_000
                     )
-                else:
-                    previous_end = next(
-                        (
-                            line.end_ms
-                            for line in reversed(sync_lines)
-                            if line.end_ms is not None
-                        ),
-                        None,
-                    )
-                    next_start = None
-                    for next_position in range(position + 1, len(lyrics)):
-                        next_lyric = lyrics[next_position]
-                        next_word_indexes = line_word_ranges.get(next_lyric.index, [])
-                        if next_word_indexes:
-                            next_start = word_observed[next_word_indexes[0]][1].start_ms
-                            break
-                        next_match = line_matches.get(next_lyric.index)
-                        if next_match is not None and next_match[1] >= 0.20:
-                            next_start = asr_segments[next_match[0]].start_ms
-                            break
-                    if previous_end is not None and next_start is not None:
-                        if provisional_method == "missing_match":
-                            provisional_method = "asr_interpolated"
-                        provisional_start = previous_end
-                        provisional_end = max(previous_end + 500, next_start)
-                    elif previous_end is not None:
-                        if provisional_method == "missing_match":
-                            provisional_method = "asr_interpolated"
-                        provisional_start = previous_end
-                        provisional_end = previous_end + 5_000
-                    elif next_start is not None:
-                        if provisional_method == "missing_match":
-                            provisional_method = "asr_interpolated"
-                        provisional_start = max(0, next_start - 5_000)
-                        provisional_end = next_start
+                # Without acoustic evidence or an imported timestamp, keep this
+                # line untimed. Extrapolation can exceed the audio duration and
+                # can cross the next measured line, especially after ASR misses.
                 logger.warning(
                     "匹配失败 line=%d lyric=%r score=%.4f method=%s provisional=%s",
                     position,
@@ -373,6 +341,11 @@ class LyricAligner:
             timing_confidence = calculate_initial_timing_confidence(timing_score, sequence_score)
             # Missing words and coarse segment boundaries are not precise onsets.
             timing_confidence = min(timing_confidence, text_match_score)
+            if matched_words:
+                acoustic_confidence = sum(
+                    word_observed[index][1].confidence for index in matched_words
+                ) / len(matched_words)
+                timing_confidence = min(timing_confidence, acoustic_confidence)
             if not matched_words:
                 timing_confidence = min(timing_confidence, 0.5)
             logger.debug(

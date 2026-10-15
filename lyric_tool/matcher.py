@@ -255,7 +255,7 @@ def align_lyric_lines_to_segment_windows(
                     and candidate[1] < best[1]
                 ):
                     best = candidate
-        if best is None or best[0] < 0.20:
+        if best is None or best[0] < 0.55:
             logger.debug(
                 "连续 segment 窗口未匹配 line=%d text=%r cursor=%d score=%.4f",
                 lyric.index,

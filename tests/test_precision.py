@@ -22,6 +22,36 @@ def measured(text, start_ms):
 
 
 class PrecisionTests(unittest.TestCase):
+    def test_missing_lines_do_not_cross_next_measured_time(self):
+        result = AlignmentPipeline().run('silver stars\nzzzzzzzz zzzzzzzz\nwe walk home',
+            [measured('silver stars', 1000), measured('we walk home', 2000)])
+        self.assertIsNone(result.lines[1].start_ms)
+        self.assertIsNone(result.lines[1].end_ms)
+        self.assertAlmostEqual(result.coverage_score, 2 / 3, places=4)
+        self.assertEqual(result.lines[2].start_ms, 2000)
+        self.assertTrue(any(issue.issue_type == 'missing_match' for issue in result.issues))
+
+    def test_missing_outro_is_not_extrapolated_past_audio(self):
+        result = AlignmentPipeline().run('silver stars\nzzzzzzzz zzzzzzzz\nqqqqqqqq qqqqqqqq',
+            [measured('silver stars', 1000)])
+        self.assertEqual([line.start_ms for line in result.lines], [1000, None, None])
+        self.assertEqual(format_lrc(result), '[00:01.00]silver stars')
+
+    def test_imported_provisional_times_are_not_acoustic_coverage(self):
+        result = AlignmentPipeline().run('silver stars\nzzzzzzzz zzzzzzzz\nwe walk home',
+            [measured('silver stars', 1000), measured('we walk home', 3000)],
+            '[00:01.00]silver stars\n[00:02.00]zzzzzzzz zzzzzzzz\n[00:03.00]we walk home')
+        self.assertEqual(result.lines[1].match_method, 'lrc_provisional')
+        self.assertAlmostEqual(result.coverage_score, 2 / 3, places=4)
+
+    def test_acoustic_word_uncertainty_limits_timing_confidence(self):
+        segment = measured('silver stars', 1000)
+        for word in segment.words:
+            word.confidence = .3
+        result = AlignmentPipeline().run('silver stars', [segment])
+        self.assertLessEqual(result.lines[0].timing_confidence, .3)
+        self.assertEqual(result.lines[0].review_status, 'needs_review')
+
     def test_single_line_can_span_multiple_segments(self):
         result = AlignmentPipeline().run('silver stars are shining bright',
             [AsrSegment('silver stars are', 1000, 2000, .98),

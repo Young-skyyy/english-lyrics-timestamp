@@ -37,6 +37,13 @@ assert.equal(vm.runInContext('formatTime(60.001)', context), '01:00.00');
   assert.equal(element('#offsetSlider').value, '0');
   assert.match(element('#lyricsPreview').innerHTML, /data-time="1.123"/);
   assert.equal(element('#metricOffset').textContent, '+0.50s');
+  vm.runInContext(`
+    state.result.lines.push({text: 'unmatched outro', start_ms: null,
+      content_confidence: 0, timing_confidence: 0, review_status: 'needs_review'});
+    renderPreview();
+  `, context);
+  assert.match(element('#lyricsPreview').innerHTML, /--:--\.--/);
+  assert.equal((element('#lyricsPreview').innerHTML.match(/data-time=/g) || []).length, 1);
   element('#offsetSlider').value = '0.01';
   vm.runInContext('renderPreview()', context);
   assert.match(element('#lyricsPreview').innerHTML, /data-time="1.133"/);

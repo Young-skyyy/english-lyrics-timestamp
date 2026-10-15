@@ -7,6 +7,8 @@ const audioDropzone = $('#audioDropzone');
 const audioPlayer = $('#audioPlayer');
 const lyricsInput = $('#lyricsInput');
 const lyricsFileInput = $('#lyricsFileInput');
+const lyricsDropzone = $('#lyricsDropzone');
+let lyricsImportVersion = 0;
 
 function formatTime(seconds) {
   const centiseconds = Math.round(Math.max(0, seconds) * 100);
@@ -17,7 +19,8 @@ function formatTime(seconds) {
 
 function parseLyrics(text) {
   return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, index) => {
-    const match = line.match(/^(?:\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\])?\s*(.*)$/);
+    if (/^\[[^\]]+\]$/.test(line)) return null;
+    const match = line.match(/^(?:\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\])?\s*(.*)$/);
     if (!match || !match[4]) return null;
     const [, minutes, seconds, fraction, lyric] = match;
     const importedSeconds = minutes == null ? null : Number(minutes) * 60 + Number(seconds) + Number(`0.${(fraction || '0').padEnd(2, '0')}`);
@@ -51,7 +54,7 @@ async function requestAlignment(onStatus) {
   const form = new FormData();
   form.append('audio', state.audioFile);
   form.append('lyrics', lyricsInput.value);
-  const importedLrc = state.lyricText.match(/^\s*\[\d{1,2}:\d{2}/m) ? state.lyricText : '';
+  const importedLrc = state.lyricText.match(/^\s*\[\d{1,3}:\d{2}/m) ? state.lyricText : '';
   if (importedLrc) form.append('imported_lrc', importedLrc);
   form.append('language', 'en');
   form.append('mode', $('#modeSelect').value);
@@ -99,11 +102,53 @@ function setAudio(file) {
 }
 
 function setLyrics(text, filename = '') {
+  const changed = state.lyricText !== text;
   state.lyricText = text;
   lyricsInput.value = text;
   state.parsedLines = parseLyrics(text);
   $('#lineCount').textContent = `${state.parsedLines.length} 行`;
   if (filename) $('#lyricsFileMeta').textContent = `${filename} · 已读取 ${state.parsedLines.length} 行`;
+  if (changed) {
+    state.result = null;
+    $('#resultStatus').textContent = '歌词已更新，等待生成对齐';
+    renderPreview();
+  }
+}
+
+function setLyricsSource(source) {
+  document.querySelectorAll('.tab').forEach((item) => item.classList.toggle('active', item.dataset.source === source));
+  $('#textSource').classList.toggle('hidden', source !== 'text');
+  $('#fileSource').classList.toggle('hidden', source !== 'file');
+}
+
+async function importLyricsFile(file) {
+  if (!file) return;
+  const version = ++lyricsImportVersion;
+  const status = $('#lyricsFileMeta');
+  status.classList.remove('error');
+  try {
+    if (!/\.(txt|lrc|srt|vtt|zip)$/i.test(file.name)) {
+      throw new Error('请拖入 TXT、LRC、SRT、VTT 或笔记 ZIP 文件。');
+    }
+    if (file.size > 2 * 1024 * 1024) throw new Error('歌词文件不能超过 2 MB。');
+    status.textContent = `正在读取 ${file.name}…`;
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch('/api/lyrics/import', { method: 'POST', body: form });
+    const payload = await response.json();
+    if (version !== lyricsImportVersion) return;
+    if (!response.ok) throw new Error(payload.detail || '歌词文件读取失败，请重新尝试。');
+    setLyrics(payload.text, file.name);
+    const format = payload.format === 'lrc' ? '含时间标签的歌词' : '纯文本歌词';
+    status.textContent = `${file.name} · ${format} · 已读取 ${payload.line_count} 行`;
+    setLyricsSource('text');
+  } catch (error) {
+    if (version !== lyricsImportVersion) return;
+    status.textContent = error.message;
+    status.classList.add('error');
+  } finally {
+    if (version === lyricsImportVersion) lyricsFileInput.value = '';
+  }
 }
 
 audioInput.addEventListener('change', (event) => setAudio(event.target.files[0]));
@@ -113,15 +158,39 @@ audioDropzone.addEventListener('drop', (event) => setAudio(event.dataTransfer.fi
 
 lyricsInput.addEventListener('input', (event) => setLyrics(event.target.value));
 lyricsFileInput.addEventListener('change', async (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
-  setLyrics(await file.text(), file.name);
+  await importLyricsFile(event.target.files[0]);
+});
+
+[lyricsDropzone, lyricsInput].forEach((target) => {
+  ['dragenter', 'dragover'].forEach((name) => target.addEventListener(name, (event) => {
+    if (![...event.dataTransfer.types].includes('Files')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    target.classList.add('dragging');
+  }));
+  target.addEventListener('dragleave', (event) => {
+    if (![...event.dataTransfer.types].includes('Files')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    target.classList.remove('dragging');
+  });
+  target.addEventListener('drop', async (event) => {
+    const files = [...event.dataTransfer.files];
+    if (!files.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    target.classList.remove('dragging');
+    if (files.length !== 1) {
+      $('#lyricsFileMeta').textContent = '一次请拖入一个歌词文件。';
+      $('#lyricsFileMeta').classList.add('error');
+      return;
+    }
+    await importLyricsFile(files[0]);
+  });
 });
 
 document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {
-  document.querySelectorAll('.tab').forEach((item) => item.classList.toggle('active', item === tab));
-  $('#textSource').classList.toggle('hidden', tab.dataset.source !== 'text');
-  $('#fileSource').classList.toggle('hidden', tab.dataset.source !== 'file');
+  setLyricsSource(tab.dataset.source);
 }));
 
 $('#offsetSlider').addEventListener('input', renderPreview);

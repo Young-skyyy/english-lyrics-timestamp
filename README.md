@@ -108,3 +108,9 @@ Web API 已支持完整的上传、识别、歌词匹配和 LRC 输出流程。�
 ## Timestamp precision update
 
 See [PRECISION.md](PRECISION.md) for fixes, model requirements and regression tests.
+
+## 歌词文件拖拽导入
+
+可将 TXT、LRC、SRT、VTT 或笔记 ZIP 拖到“读取歌词文件”区域，也可以直接拖到文字输入框。导入后自动识别格式并展开歌词内容；SRT/VTT 转为带时间标签的歌词。识别与对齐仍由“生成本地预览”按钮启动。
+
+ZIP 中需只有一份受支持的歌词文件，内部 `.note` 等笔记元数据会忽略。文件和解压后的歌词均限制为 2 MB。支持 UTF-8、带 BOM 的 UTF-16 和 GB18030 文本。

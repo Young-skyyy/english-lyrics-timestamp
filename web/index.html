@@ -55,9 +55,13 @@
           <div class="textarea-footer"><span id="lineCount">0 行</span><span>文本不会被自动改写</span></div>
         </div>
         <div id="fileSource" class="source-content hidden">
-          <label class="file-button"><input id="lyricsFileInput" type="file" accept=".txt,.lrc,.srt,.vtt,text/plain" />选择 .txt / .lrc / .srt / .vtt 文件</label>
-          <p id="lyricsFileMeta" class="file-meta">导入后会自动识别纯文本或时间标签。</p>
+          <label class="file-button lyrics-dropzone" id="lyricsDropzone">
+            <input id="lyricsFileInput" type="file" accept=".txt,.lrc,.srt,.vtt,.zip,text/plain,application/zip" />
+            <strong>把歌词文件拖到这里</strong>
+            <span>TXT · LRC · SRT · VTT · 笔记 ZIP，也可点击选择</span>
+          </label>
         </div>
+        <p id="lyricsFileMeta" class="file-meta" role="status" aria-live="polite">自动识别歌词格式；也可以直接拖到文字输入框。</p>
 
         <div class="mode-control">
           <label for="modeSelect">识别模式</label>

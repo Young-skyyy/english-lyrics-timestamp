@@ -21,6 +21,7 @@ from lyric_tool.models import AsrSegment
 from lyric_tool.parser import parse_lyrics, parse_lrc
 from lyric_tool.separator import DemucsSeparator
 from lyric_tool.isolated_transcriber import run_transcription
+from lyric_tool.lyric_import import MAX_LYRIC_BYTES, import_lyrics_file
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
@@ -63,6 +64,15 @@ def index() -> FileResponse:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "lyricflow"}
+
+
+@app.post("/api/lyrics/import")
+async def import_lyrics(file: UploadFile = File(...)) -> dict[str, object]:
+    data = await file.read(MAX_LYRIC_BYTES + 1)
+    try:
+        return import_lyrics_file(file.filename or '', data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/status/{task_id}")
